@@ -15,7 +15,12 @@ account    required     pam_nologin.so
 
 # Uncomment and edit /etc/security/access.conf if you need to set complex
 # access limits that are hard to express in sshd_config.
+{% if sshd__pam_access_file | d() %}
+
 account  required     pam_access.so nodefgroup accessfile={{ sshd__pam_access_file }}
+{% else %}
+# account  required     pam_access.so
+{% endif %}
 
 # Standard Un*x authorization.
 @include common-account

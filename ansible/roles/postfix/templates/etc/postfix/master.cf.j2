@@ -64,19 +64,28 @@
 {%     set element_maxproc =  set_value(element.maxproc) | from_json %}
 {%     set element_command =  element.command %}
 {%     set element_args =     (element.args | d('') | regex_replace('\n$','')) %}
-{%     set name_indent =      (option_commented | ternary('8', '9')) %}
-{%     set type_indent =      ((element_name | length > 8) | ternary('4', '5')) %}
-{%     set private_indent =   ((element_name | length > 8 and option_commented) | ternary('6', '7')) %}
-{%     set option_format =    ('{}{:<' + name_indent + '} {:<' + type_indent + '} {:<' + private_indent + '} {:<7} {:<7} {:<7} {:<7} {}') %}
 {%     if element.comment | d() %}
 {%       set comment_header = ('#' if (element.state | d('present') == 'hidden' or (element.comment.split('\n') | list | count >= 3)) else '') %}
-{%       set comment_footer = ('#\n' if (element.comment.split('\n') | list | count < 5) else '') %}
+{%       set comment_footer = ('#\n' if (element.comment.split('\n') | list | count < 5 and not element.no_comment_footer | d(false)) else '') %}
 {{ element.comment | regex_replace('\n$','') | comment(prefix=comment_header, postfix=comment_footer) -}}
 {%     elif element.separator is defined and element.separator | bool %}
 
 {%     endif %}
 {%     if element.state | d('present') != 'hidden' %}
-{{ option_format.format(option_commented, element_name, element_type, element_private, element_unpriv, element_chroot, element_wakeup, element_maxproc, element_command) }}
+{%       set values = [element_name, element_type, element_private, element_unpriv, element_chroot, element_wakeup, element_maxproc]%}
+{%       set fields_width = [element.service_width | d(option_commented | ternary(11, 10)), 6, 8, 8, 8, 8, 8]%}
+{%       set v = {'width': 0, 'option': option_commented | ternary('#', '')}%}
+{%       for i in range(values | length) %}
+{%         if loop.index >= element.fixed_width_field_start | d(6) %}
+{%           set width = fields_width.pop(0) %}
+{%           set _ = v.update({'width': v.width + width, 'option': '%%-s%%-%ds' | format(width) | format(v.option, values.pop(0))})%}
+{%         else %}
+{%           set width = v.width + fields_width.pop(0) %}
+{%           set _ = v.update({'width': width, 'option': '%%-%ds' | format(width) | format(v.option + values.pop(0))})%}
+{%         endif %}
+{%         if not v.option is search(' $') %}{% set _ = v.update({'option': v.option + ' '}) %}{% endif %}
+{%       endfor %}
+{{ v.option + element_command }}
 {%       if element.options | d() %}
 {%         set parsed_options = [] %}
 {%         for option in element.options %}
@@ -110,12 +119,15 @@
 {%           else %}
 {%             set _ = option_dict.update({'value': [] }) %}
 {%           endif %}
+{%           set _ = option_dict.update({'indent': option_indent | d(element.option_indent | d(3)), 'nb': option.nb | d(false)})%}
 {%           set _ = parsed_options.append(option_dict) %}
 {%         endfor %}
 {%         if parsed_options | count > 0 %}
 {%           for thing in parsed_options %}
 {%             set thing_commented = ('#' if thing.state | d('present') == 'comment' else '') %}
-{{ '{}  -o {{ {} = {} }}'.format(option_commented if option_commented else thing_commented, thing.name, ([ thing.value ] if thing.value is string else thing.value) | join(', ')) }}
+{% if not parsed_options[loop.index0 - 1].nb %}{{ '%%-%ds' | format(thing.indent) | format(option_commented if option_commented else thing_commented) }}{% endif %}
+-o {{ '%s=%s' | format(thing.name, ([ thing.value ] if thing.value is string else thing.value) | join(',')) -}}
+{% if not thing.nb %}{{ "\n" }}{% else %} {% endif -%}
 {%           endfor %}
 {%         endif %}
 {%       endif %}
